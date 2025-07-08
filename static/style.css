@@ -1,44 +1,45 @@
 body {
     font-family: Vazir, sans-serif;
-    background-color: #f8f9fa;
+    background-color: #f5f7fa;
     transition: background-color 0.3s, color 0.3s;
 }
 body.dark-theme {
-    background-color: #212529;
-    color: #f8f9fa;
+    background-color: #1a1d21;
+    color: #e9ecef;
 }
 body.dark-theme .upload-box {
-    background-color: #343a40;
+    background-color: #2c3035;
     border-color: #495057;
 }
 body.dark-theme .card {
-    background-color: #343a40;
+    background-color: #2c3035;
     border-color: #495057;
 }
 body.dark-theme .form-control {
-    background-color: #495057;
-    color: #f8f9fa;
+    background-color: #343a40;
+    color: #e9ecef;
     border-color: #6c757d;
 }
 body.dark-theme .btn-primary {
-    background-color: #4caf50;
-    border-color: #4caf50;
+    background-color: #0d6efd;
+    border-color: #0d6efd;
 }
 .upload-box {
     border: 3px dashed #ced4da;
     padding: 30px;
     border-radius: 15px;
-    background-color: #fff;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    background-color: #ffffff;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
     margin-top: 30px;
     transition: all 0.3s ease;
 }
 .upload-box:hover {
-    border-color: #007bff;
+    border-color: #0d6efd;
+    transform: translateY(-3px);
 }
 .footer {
-    background-color: #343a40;
-    color: white;
+    background-color: #212529;
+    color: #ffffff;
     padding: 15px;
     text-align: center;
     position: fixed;
@@ -46,24 +47,34 @@ body.dark-theme .btn-primary {
     width: 100%;
 }
 .form-section {
-    margin-bottom: 20px;
+    margin-bottom: 30px;
 }
 .card {
-    border-radius: 10px;
+    border-radius: 12px;
     margin-bottom: 20px;
-    animation: fadeIn 0.5s ease-in;
+    animation: slideIn 0.5s ease-in;
+}
+.result-card {
+    transition: transform 0.2s;
+}
+.result-card:hover {
+    transform: translateY(-5px);
 }
 .chart-container {
-    max-width: 600px;
-    margin: 20px auto;
+    max-width: 700px;
+    margin: 30px auto;
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
-.btn-sort, .btn-primary {
+.btn-sort, .btn-primary, .btn-outline-success, .btn-outline-danger {
     transition: background-color 0.3s, transform 0.2s;
 }
-.btn-sort:hover, .btn-primary:hover {
+.btn-sort:hover, .btn-primary:hover, .btn-outline-success:hover, .btn-outline-danger:hover {
     transform: scale(1.05);
 }
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
 }
