@@ -3,6 +3,7 @@ from werkzeug.utils import secure_filename
 import pdfplumber
 import os
 from openai import OpenAI
+import httpx
 from deep_translator import GoogleTranslator
 from langdetect import detect
 import json
@@ -26,22 +27,16 @@ VAZIR_FONT_URL = 'https://raw.githubusercontent.com/rastikerdar/vazir-font/maste
 
 # دانلود و رجیستر فونت برای PDF
 def register_vazir_font():
-    response = requests.get(VAZIR_FONT_URL)
-    if response.status_code == 200:
+    try:
+        response = requests.get(VAZIR_FONT_URL, timeout=10)
+        response.raise_for_status()
         with tempfile.NamedTemporaryFile(delete=False, suffix='.ttf') as tmp_file:
             tmp_file.write(response.content)
             tmp_file_path = tmp_file.name
         pdfmetrics.registerFont(TTFont('Vazir', tmp_file_path))
         return tmp_file_path
-    else:
-        raise Exception("خطا در دانلود فونت Vazir")
-
-# کلاینت گپ‌جی‌پی‌تی
-GAPGPT_API_KEY = os.environ.get('GAPGPT_API_KEY', 'YOUR_GAPGPT_API_KEY')
-gapgpt_client = OpenAI(
-    api_key=GAPGPT_API_KEY,
-    base_url='https://api.gapgpt.app/v1'
-)
+    except Exception as e:
+        raise Exception(f"خطا در دانلود فونت Vazir: {str(e)}")
 
 # بررسی نوع فایل
 def allowed_file(filename):
@@ -67,16 +62,23 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
-    if 'resumes' not in request.files:
-        return jsonify({'error': 'هیچ فایلی آپلود نشده است'}), 400
+    if 'resumes' not in request.files or not request.form.get('api_key'):
+        return jsonify({'error': 'فایل رزومه یا توکن API وارد نشده است'}), 400
     
     files = request.files.getlist('resumes')
+    api_key = request.form.get('api_key')
     custom_prompt = request.form.get('custom_prompt', DEFAULT_PROMPT)
-    weights = {
-        'experience': float(request.form.get('weight_experience', 0.4)),
-        'skills': float(request.form.get('weight_skills', 0.3)),
-        'education': float(request.form.get('weight_education', 0.3))
-    }
+    criteria = json.loads(request.form.get('criteria', '{}'))
+    
+    # ایجاد کلاینت OpenAI با توکن کاربر
+    try:
+        gapgpt_client = OpenAI(
+            api_key=api_key,
+            base_url='https://api.gapgpt.app/v1',
+            http_client=httpx.Client(follow_redirects=True)
+        )
+    except Exception as e:
+        return jsonify({'error': f'خطا در مقداردهی کلاینت API: {str(e)}'}), 400
     
     results = []
     
@@ -106,13 +108,18 @@ def upload_resume():
                 
                 analysis = json.loads(response.choices[0].message.content)
                 
-                # محاسبه امتیاز
-                score = (
-                    analysis.get('experience', 0) * 10 * weights['experience'] +
-                    len(analysis.get('skills', [])) * 5 * weights['skills'] +
-                    {'PhD': 30, 'Master': 25, 'Bachelor': 20}.get(
-                        analysis.get('education', '').split()[0], 10) * weights['education']
-                )
+                # محاسبه امتیاز پویا بر اساس معیارها
+                score = 0
+                if criteria:
+                    for criterion, weight in criteria.items():
+                        if criterion == 'experience':
+                            score += analysis.get('experience', 0) * 10 * weight
+                        elif criterion == 'skills':
+                            score += len(analysis.get('skills', [])) * 5 * weight
+                        elif criterion == 'education':
+                            score += {'PhD': 30, 'Master': 25, 'Bachelor': 20}.get(
+                                analysis.get('education', '').split()[0], 10) * weight
+                        # معیارهای سفارشی (در آینده گسترش‌پذیر)
                 
                 results.append({
                     'filename': filename,
@@ -286,4 +293,4 @@ def download_all_pdf():
     )
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
