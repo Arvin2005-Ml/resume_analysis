@@ -1,0 +1,69 @@
+body {
+    font-family: Vazir, sans-serif;
+    background-color: #f8f9fa;
+    transition: background-color 0.3s, color 0.3s;
+}
+body.dark-theme {
+    background-color: #212529;
+    color: #f8f9fa;
+}
+body.dark-theme .upload-box {
+    background-color: #343a40;
+    border-color: #495057;
+}
+body.dark-theme .card {
+    background-color: #343a40;
+    border-color: #495057;
+}
+body.dark-theme .form-control {
+    background-color: #495057;
+    color: #f8f9fa;
+    border-color: #6c757d;
+}
+body.dark-theme .btn-primary {
+    background-color: #4caf50;
+    border-color: #4caf50;
+}
+.upload-box {
+    border: 3px dashed #ced4da;
+    padding: 30px;
+    border-radius: 15px;
+    background-color: #fff;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    margin-top: 30px;
+    transition: all 0.3s ease;
+}
+.upload-box:hover {
+    border-color: #007bff;
+}
+.footer {
+    background-color: #343a40;
+    color: white;
+    padding: 15px;
+    text-align: center;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}
+.form-section {
+    margin-bottom: 20px;
+}
+.card {
+    border-radius: 10px;
+    margin-bottom: 20px;
+    animation: fadeIn 0.5s ease-in;
+}
+.chart-container {
+    max-width: 600px;
+    margin: 20px auto;
+}
+.btn-sort, .btn-primary {
+    transition: background-color 0.3s, transform 0.2s;
+}
+.btn-sort:hover, .btn-primary:hover {
+    transform: scale(1.05);
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}

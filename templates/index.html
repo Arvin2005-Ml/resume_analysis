@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تحلیل رزومه‌ها</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font/dist/font-face.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mt-4 mb-4">
+            <h1>ابزار تحلیل رزومه</h1>
+            <button id="themeToggle" class="btn btn-outline-secondary">تغییر تم</button>
+        </div>
+        <div class="form-section">
+            <h3>تنظیمات تحلیل</h3>
+            <form id="resumeForm">
+                <div class="mb-3">
+                    <label for="weight_experience" class="form-label">وزن تجربه کاری (٪)</label>
+                    <input type="number" class="form-control" id="weight_experience" name="weight_experience" value="40" min="0" max="100">
+                </div>
+                <div class="mb-3">
+                    <label for="weight_skills" class="form-label">وزن مهارت‌ها (٪)</label>
+                    <input type="number" class="form-control" id="weight_skills" name="weight_skills" value="30" min="0" max="100">
+                </div>
+                <div class="mb-3">
+                    <label for="weight_education" class="form-label">وزن تحصیلات (٪)</label>
+                    <input type="number" class="form-control" id="weight_education" name="weight_education" value="30" min="0" max="100">
+                </div>
+                <div class="mb-3">
+                    <label for="custom_prompt" class="form-label">پرامپت سفارشی (اختیاری)</label>
+                    <textarea class="form-control" id="custom_prompt" name="custom_prompt" rows="4" placeholder="پرامپت سفارشی خود را وارد کنید..."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="resumeInput" class="form-label">آپلود رزومه‌ها (PDF)</label>
+                    <input type="file" multiple accept=".pdf" id="resumeInput" name="resumes" class="form-control">
+                </div>
+                <button type="button" class="btn btn-primary" onclick="uploadResumes()">ارسال</button>
+            </form>
+        </div>
+        <div class="d-flex justify-content-between mb-3">
+            <button class="btn btn-outline-primary btn-sort" onclick="sortResults()">مرتب‌سازی بر اساس امتیاز</button>
+            <div>
+                <a id="downloadAllCsv" class="btn btn-outline-secondary me-2" style="display:none">دانلود همه (CSV)</a>
+                <a id="downloadAllPdf" class="btn btn-outline-secondary" style="display:none">دانلود همه (PDF)</a>
+            </div>
+        </div>
+        <div id="results" class="mt-4"></div>
+        <div class="chart-container">
+            <canvas id="scoreChart"></canvas>
+        </div>
+    </div>
+    <footer class="footer">
+        طراحی و توسعه توسط آروین شکوهی
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let chartData = [];
+        
+        // تم تیره/روشن
+        const themeToggle = document.getElementById('themeToggle');
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-theme');
+            localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
+            themeToggle.textContent = document.body.classList.contains('dark-theme') ? 'تم روشن' : 'تم تیره';
+        });
+        if (localStorage.getItem('theme') === 'dark') {
+            document.body.classList.add('dark-theme');
+            themeToggle.textContent = 'تم روشن';
+        }
+
+        function uploadResumes() {
+            const files = document.getElementById('resumeInput').files;
+            if (files.length === 0) {
+                alert('لطفاً حداقل یک فایل انتخاب کنید');
+                return;
+            }
+            const formData = new FormData(document.getElementById('resumeForm'));
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                chartData = data.results.sort((a, b) => (b.score || 0) - (a.score || 0));
+                renderResults(chartData);
+                renderChart();
+                if (chartData.length > 0) {
+                    const resultsJson = encodeURIComponent(JSON.stringify(chartData));
+                    document.getElementById('downloadAllCsv').href = `/download/all/csv?results=${resultsJson}`;
+                    document.getElementById('downloadAllPdf').href = `/download/all/pdf?results=${resultsJson}`;
+                    document.getElementById('downloadAllCsv').style.display = 'inline-block';
+                    document.getElementById('downloadAllPdf').style.display = 'inline-block';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('خطایی رخ داد');
+            });
+        }
+
+        function renderResults(results) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+            results.forEach(result => {
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'card';
+                resultDiv.innerHTML = `
+                    <div class="card-body">
+                        <h5 class="card-title">${result.filename}</h5>
+                        ${result.error ? `<p class="card-text text-danger">${result.error}</p>` : `
+                            <p class="card-text"><strong>امتیاز:</strong> ${result.score}</p>
+                            <p class="card-text"><strong>تحلیل:</strong> ${result.summary}</p>
+                            <p class="card-text"><strong>تجربه:</strong> ${result.analysis.experience || 'نامشخص'} سال</p>
+                            <p class="card-text"><strong>مهارت‌ها:</strong> ${result.analysis.skills?.join(', ') || 'نامشخص'}</p>
+                            <p class="card-text"><strong>تحصیلات:</strong> ${result.analysis.education || 'نامشخص'}</p>
+                            <a href="/download/csv/${result.filename}?results=${encodeURIComponent(JSON.stringify(results))}" class="btn btn-primary btn-sm me-2">دانلود CSV</a>
+                            <a href="/download/pdf/${encodeURIComponent(result.filename)}?results=${encodeURIComponent(JSON.stringify(results))}" class="btn btn-primary btn-sm">دانلود PDF</a>
+                        `}
+                    </div>
+                `;
+                resultsDiv.appendChild(resultDiv);
+            });
+        }
+
+        function sortResults() {
+            chartData.sort((a, b) => (b.score || 0) - (a.score || 0));
+            renderResults(chartData);
+            renderChart();
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('scoreChart').getContext('2d');
+            if (window.scoreChart) window.scoreChart.destroy();
+            window.scoreChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.map(r => r.filename),
+                    datasets: [
+                        {
+                            label: 'امتیاز کل',
+                            data: chartData.map(r => r.score || 0),
+                            backgroundColor: '#007bff',
+                            borderColor: '#0056b3',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'تجربه',
+                            data: chartData.map(r => (r.analysis?.experience || 0) * 10),
+                            backgroundColor: '#28a745',
+                            borderColor: '#1e7e34',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'مهارت‌ها',
+                            data: chartData.map(r => (r.analysis?.skills?.length || 0) * 5),
+                            backgroundColor: '#ffc107',
+                            borderColor: '#e0a800',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        y: { beginAtZero: true, max: 100 }
+                    },
+                    plugins: {
+                        legend: { position: 'top' }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
