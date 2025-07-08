@@ -15,6 +15,11 @@ from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 import requests
 import tempfile
+import logging
+
+# تنظیم لاگ‌گذاری
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -36,6 +41,7 @@ def register_vazir_font():
         pdfmetrics.registerFont(TTFont('Vazir', tmp_file_path))
         return tmp_file_path
     except Exception as e:
+        logger.error(f"خطا در دانلود فونت Vazir: {str(e)}")
         raise Exception(f"خطا در دانلود فونت Vazir: {str(e)}")
 
 # بررسی نوع فایل
@@ -62,55 +68,62 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
-    if 'resumes' not in request.files or not request.form.get('api_key'):
-        return jsonify({'error': 'فایل رزومه یا توکن API وارد نشده است'}), 400
-    
-    files = request.files.getlist('resumes')
-    api_key = request.form.get('api_key')
-    custom_prompt = request.form.get('custom_prompt', DEFAULT_PROMPT)
-    criteria = json.loads(request.form.get('criteria', '{}'))
-    
-    # ایجاد کلاینت OpenAI با توکن کاربر
     try:
-        gapgpt_client = OpenAI(
-            api_key=api_key,
-            base_url='https://api.gapgpt.app/v1',
-            http_client=httpx.Client(follow_redirects=True)
-        )
-    except Exception as e:
-        return jsonify({'error': f'خطا در مقداردهی کلاینت API: {str(e)}'}), 400
-    
-    results = []
-    
-    for file in files:
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
-            
-            try:
-                # استخراج متن از PDF
-                with pdfplumber.open(file_path) as pdf:
-                    text = ''.join(page.extract_text() or '' for page in pdf.pages)
+        if 'resumes' not in request.files or not request.form.get('api_key'):
+            logger.error("فایل رزومه یا توکن API وارد نشده است")
+            return jsonify({'error': 'فایل رزومه یا توکن API وارد نشده است'}), 400
+        
+        files = request.files.getlist('resumes')
+        api_key = request.form.get('api_key')
+        custom_prompt = request.form.get('custom_prompt', DEFAULT_PROMPT)
+        criteria = json.loads(request.form.get('criteria', '{}'))
+        
+        # اعتبارسنجی معیارها
+        if not criteria:
+            logger.error("هیچ معیاری تعریف نشده است")
+            return jsonify({'error': 'حداقل یک معیار باید تعریف شود'}), 400
+        
+        # ایجاد کلاینت OpenAI
+        try:
+            gapgpt_client = OpenAI(
+                api_key=api_key,
+                base_url='https://api.gapgpt.app/v1',
+                http_client=httpx.Client(follow_redirects=True)
+            )
+        except Exception as e:
+            logger.error(f"خطا در مقداردهی کلاینت API: {str(e)}")
+            return jsonify({'error': f'خطا در مقداردهی کلاینت API: {str(e)}'}), 400
+        
+        results = []
+        
+        for file in files:
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
                 
-                # تشخیص زبان
-                lang = detect(text)
-                if lang != 'fa':
-                    text = GoogleTranslator(source='auto', target='fa').translate(text)
-                
-                # ارسال به API گپ‌جی‌پی‌تی
-                response = gapgpt_client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "user", "content": custom_prompt + "\n\nResume text:\n" + text}
-                    ]
-                )
-                
-                analysis = json.loads(response.choices[0].message.content)
-                
-                # محاسبه امتیاز پویا بر اساس معیارها
-                score = 0
-                if criteria:
+                try:
+                    # استخراج متن از PDF
+                    with pdfplumber.open(file_path) as pdf:
+                        text = ''.join(page.extract_text() or '' for page in pdf.pages)
+                    
+                    # تشخیص زبان
+                    lang = detect(text)
+                    if lang != 'fa':
+                        text = GoogleTranslator(source='auto', target='fa').translate(text)
+                    
+                    # ارسال به API گپ‌جی‌پی‌تی
+                    response = gapgpt_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "user", "content": custom_prompt + "\n\nResume text:\n" + text}
+                        ]
+                    )
+                    
+                    analysis = json.loads(response.choices[0].message.content)
+                    
+                    # محاسبه امتیاز پویا
+                    score = 0
                     for criterion, weight in criteria.items():
                         if criterion == 'experience':
                             score += analysis.get('experience', 0) * 10 * weight
@@ -119,178 +132,205 @@ def upload_resume():
                         elif criterion == 'education':
                             score += {'PhD': 30, 'Master': 25, 'Bachelor': 20}.get(
                                 analysis.get('education', '').split()[0], 10) * weight
-                        # معیارهای سفارشی (در آینده گسترش‌پذیر)
-                
+                        # معیارهای سفارشی در آینده قابل گسترش
+                    score = min(round(score, 2), 100)
+                    
+                    results.append({
+                        'filename': filename,
+                        'analysis': analysis,
+                        'score': score,
+                        'summary': analysis.get('summary', 'تحلیل در دسترس نیست')
+                    })
+                    
+                    # حذف فایل
+                    os.remove(file_path)
+                    
+                except Exception as e:
+                    logger.error(f"خطا در پردازش فایل {filename}: {str(e)}")
+                    results.append({
+                        'filename': filename,
+                        'error': f'خطا در پردازش: {str(e)}'
+                    })
+            else:
+                logger.error(f"فرمت فایل {filename} مجاز نیست")
                 results.append({
                     'filename': filename,
-                    'analysis': analysis,
-                    'score': min(round(score, 2), 100),
-                    'summary': analysis.get('summary', 'تحلیل در دسترس نیست')
+                    'error': 'فرمت فایل مجاز نیست'
                 })
-                
-                # حذف فایل
-                os.remove(file_path)
-                
-            except Exception as e:
-                results.append({
-                    'filename': filename,
-                    'error': f'خطا در پردازش: {str(e)}'
-                })
-        else:
-            results.append({
-                'filename': filename,
-                'error': 'فرمت فایل مجاز نیست'
-            })
+        
+        return jsonify({'results': results})
     
-    return jsonify({'results': results})
+    except Exception as e:
+        logger.error(f"خطای عمومی در /upload: {str(e)}")
+        return jsonify({'error': f'خطای سرور: {str(e)}'}), 500
 
 @app.route('/download/csv/<filename>', methods=['GET'])
 def download_csv(filename):
-    results = json.loads(request.args.get('results'))
+    try:
+        results = json.loads(request.args.get('results'))
+        
+        output = BytesIO()
+        writer = csv.writer(output)
+        writer.writerow(['Filename', 'Score', 'Experience', 'Skills', 'Education', 'Summary'])
+        
+        for result in results:
+            if result['filename'] == filename and 'analysis' in result:
+                writer.writerow([
+                    result['filename'],
+                    result['score'],
+                    result['analysis'].get('experience', 'نامشخص'),
+                    ', '.join(result['analysis'].get('skills', [])),
+                    result['analysis'].get('education', 'نامشخص'),
+                    result['summary']
+                ])
+        
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'{filename}_analysis.csv'
+        )
     
-    output = BytesIO()
-    writer = csv.writer(output)
-    writer.writerow(['Filename', 'Score', 'Experience', 'Skills', 'Education', 'Summary'])
-    
-    for result in results:
-        if result['filename'] == filename and 'analysis' in result:
-            writer.writerow([
-                result['filename'],
-                result['score'],
-                result['analysis'].get('experience', 'نامشخص'),
-                ', '.join(result['analysis'].get('skills', [])),
-                result['analysis'].get('education', 'نامشخص'),
-                result['summary']
-            ])
-    
-    output.seek(0)
-    return send_file(
-        output,
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name=f'{filename}_analysis.csv'
-    )
+    except Exception as e:
+        logger.error(f"خطا در دانلود CSV: {str(e)}")
+        return jsonify({'error': f'خطا در دانلود CSV: {str(e)}'}), 500
 
 @app.route('/download/pdf/<filename>', methods=['GET'])
 def download_pdf(filename):
-    results = json.loads(request.args.get('results'))
-    output = BytesIO()
-    c = canvas.Canvas(output, pagesize=A4)
+    try:
+        results = json.loads(request.args.get('results'))
+        output = BytesIO()
+        c = canvas.Canvas(output, pagesize=A4)
+        
+        # رجیستر فونت
+        font_path = register_vazir_font()
+        c.setFont('Vazir', 12)
+        y = 800
+        
+        for result in results:
+            if result['filename'] == filename and 'analysis' in result:
+                c.drawString(50, y, f"رزومه: {result['filename']}")
+                y -= 20
+                c.drawString(50, y, f"امتیاز: {result['score']}")
+                y -= 20
+                c.drawString(50, y, f"تجربه: {result['analysis'].get('experience', 'نامشخص')} سال")
+                y -= 20
+                c.drawString(50, y, f"مهارت‌ها: {', '.join(result['analysis'].get('skills', []))}")
+                y -= 20
+                c.drawString(50, y, f"تحصیلات: {result['analysis'].get('education', 'نامشخص')}")
+                y -= 30
+                c.drawString(50, y, "تحلیل:")
+                y -= 20
+                text_object = c.beginText(50, y)
+                text_object.setFont('Vazir', 12)
+                text_object.setLeading(14)
+                for line in result['summary'].split('\n'):
+                    text_object.textLine(line)
+                    y -= 14
+                c.drawText(text_object)
+        
+        c.showPage()
+        c.save()
+        output.seek(0)
+        
+        # حذف فایل موقت فونت
+        os.remove(font_path)
+        
+        return send_file(
+            output,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'{filename}_analysis.pdf'
+        )
     
-    # رجیستر فونت
-    font_path = register_vazir_font()
-    c.setFont('Vazir', 12)
-    y = 800
-    
-    for result in results:
-        if result['filename'] == filename and 'analysis' in result:
-            c.drawString(50, y, f"رزومه: {result['filename']}")
-            y -= 20
-            c.drawString(50, y, f"امتیاز: {result['score']}")
-            y -= 20
-            c.drawString(50, y, f"تجربه: {result['analysis'].get('experience', 'نامشخص')} سال")
-            y -= 20
-            c.drawString(50, y, f"مهارت‌ها: {', '.join(result['analysis'].get('skills', []))}")
-            y -= 20
-            c.drawString(50, y, f"تحصیلات: {result['analysis'].get('education', 'نامشخص')}")
-            y -= 30
-            c.drawString(50, y, "تحلیل:")
-            y -= 20
-            text_object = c.beginText(50, y)
-            text_object.setFont('Vazir', 12)
-            text_object.setLeading(14)
-            for line in result['summary'].split('\n'):
-                text_object.textLine(line)
-                y -= 14
-            c.drawText(text_object)
-    
-    c.showPage()
-    c.save()
-    output.seek(0)
-    
-    # حذف فایل موقت فونت
-    os.remove(font_path)
-    
-    return send_file(
-        output,
-        mimetype='application/pdf',
-        as_attachment=True,
-        download_name=f'{filename}_analysis.pdf'
-    )
+    except Exception as e:
+        logger.error(f"خطا در دانلود PDF: {str(e)}")
+        return jsonify({'error': f'خطا در دانلود PDF: {str(e)}'}), 500
 
 @app.route('/download/all/csv', methods=['GET'])
 def download_all_csv():
-    results = json.loads(request.args.get('results'))
+    try:
+        results = json.loads(request.args.get('results'))
+        
+        output = BytesIO()
+        writer = csv.writer(output)
+        writer.writerow(['Filename', 'Score', 'Experience', 'Skills', 'Education', 'Summary'])
+        
+        for result in results:
+            if 'analysis' in result:
+                writer.writerow([
+                    result['filename'],
+                    result['score'],
+                    result['analysis'].get('experience', 'نامشخص'),
+                    ', '.join(result['analysis'].get('skills', [])),
+                    result['analysis'].get('education', 'نامشخص'),
+                    result['summary']
+                ])
+        
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='all_resumes_analysis.csv'
+        )
     
-    output = BytesIO()
-    writer = csv.writer(output)
-    writer.writerow(['Filename', 'Score', 'Experience', 'Skills', 'Education', 'Summary'])
-    
-    for result in results:
-        if 'analysis' in result:
-            writer.writerow([
-                result['filename'],
-                result['score'],
-                result['analysis'].get('experience', 'نامشخص'),
-                ', '.join(result['analysis'].get('skills', [])),
-                result['analysis'].get('education', 'نامشخص'),
-                result['summary']
-            ])
-    
-    output.seek(0)
-    return send_file(
-        output,
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name='all_resumes_analysis.csv'
-    )
+    except Exception as e:
+        logger.error(f"خطا در دانلود همه CSV: {str(e)}")
+        return jsonify({'error': f'خطا در دانلود همه CSV: {str(e)}'}), 500
 
 @app.route('/download/all/pdf', methods=['GET'])
 def download_all_pdf():
-    results = json.loads(request.args.get('results'))
-    output = BytesIO()
-    c = canvas.Canvas(output, pagesize=A4)
+    try:
+        results = json.loads(request.args.get('results'))
+        output = BytesIO()
+        c = canvas.Canvas(output, pagesize=A4)
+        
+        # رجیستر فونت
+        font_path = register_vazir_font()
+        c.setFont('Vazir', 12)
+        
+        for result in results:
+            if 'analysis' in result:
+                y = 800
+                c.drawString(50, y, f"رزومه: {result['filename']}")
+                y -= 20
+                c.drawString(50, y, f"امتیاز: {result['score']}")
+                y -= 20
+                c.drawString(50, y, f"تجربه: {result['analysis'].get('experience', 'نامشخص')} سال")
+                y -= 20
+                c.drawString(50, y, f"مهارت‌ها: {', '.join(result['analysis'].get('skills', []))}")
+                y -= 20
+                c.drawString(50, y, f"تحصیلات: {result['analysis'].get('education', 'نامشخص')}")
+                y -= 30
+                c.drawString(50, y, "تحلیل:")
+                y -= 20
+                text_object = c.beginText(50, y)
+                text_object.setFont('Vazir', 12)
+                text_object.setLeading(14)
+                for line in result['summary'].split('\n'):
+                    text_object.textLine(line)
+                    y -= 14
+                c.drawText(text_object)
+                c.showPage()
+        
+        c.save()
+        output.seek(0)
+        
+        # حذف فایل موقت فونت
+        os.remove(font_path)
+        
+        return send_file(
+            output,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name='all_resumes_analysis.pdf'
+        )
     
-    # رجیستر فونت
-    font_path = register_vazir_font()
-    c.setFont('Vazir', 12)
-    
-    for result in results:
-        if 'analysis' in result:
-            y = 800
-            c.drawString(50, y, f"رزومه: {result['filename']}")
-            y -= 20
-            c.drawString(50, y, f"امتیاز: {result['score']}")
-            y -= 20
-            c.drawString(50, y, f"تجربه: {result['analysis'].get('experience', 'نامشخص')} سال")
-            y -= 20
-            c.drawString(50, y, f"مهارت‌ها: {', '.join(result['analysis'].get('skills', []))}")
-            y -= 20
-            c.drawString(50, y, f"تحصیلات: {result['analysis'].get('education', 'نامشخص')}")
-            y -= 30
-            c.drawString(50, y, "تحلیل:")
-            y -= 20
-            text_object = c.beginText(50, y)
-            text_object.setFont('Vazir', 12)
-            text_object.setLeading(14)
-            for line in result['summary'].split('\n'):
-                text_object.textLine(line)
-                y -= 14
-            c.drawText(text_object)
-            c.showPage()
-    
-    c.save()
-    output.seek(0)
-    
-    # حذف فایل موقت فونت
-    os.remove(font_path)
-    
-    return send_file(
-        output,
-        mimetype='application/pdf',
-        as_attachment=True,
-        download_name='all_resumes_analysis.pdf'
-    )
+    except Exception as e:
+        logger.error(f"خطا در دانلود همه PDF: {str(e)}")
+        return jsonify({'error': f'خطا در دانلود همه PDF: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
