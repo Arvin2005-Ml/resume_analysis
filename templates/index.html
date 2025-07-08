@@ -6,46 +6,60 @@
     <title>تحلیل رزومه‌ها</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font/dist/font-face.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
         <div class="d-flex justify-content-between align-items-center mt-4 mb-4">
-            <h1>ابزار تحلیل رزومه</h1>
-            <button id="themeToggle" class="btn btn-outline-secondary">تغییر تم</button>
+            <h1><i class="bi bi-file-earmark-text me-2"></i> ابزار تحلیل رزومه</h1>
+            <button id="themeToggle" class="btn btn-outline-secondary"><i class="bi bi-moon-stars-fill me-2"></i> تغییر تم</button>
         </div>
         <div class="form-section">
-            <h3>تنظیمات تحلیل</h3>
+            <h3><i class="bi bi-gear-fill me-2"></i> تنظیمات تحلیل</h3>
             <form id="resumeForm">
                 <div class="mb-3">
-                    <label for="weight_experience" class="form-label">وزن تجربه کاری (٪)</label>
-                    <input type="number" class="form-control" id="weight_experience" name="weight_experience" value="40" min="0" max="100">
-                </div>
-                <div class="mb-3">
-                    <label for="weight_skills" class="form-label">وزن مهارت‌ها (٪)</label>
-                    <input type="number" class="form-control" id="weight_skills" name="weight_skills" value="30" min="0" max="100">
-                </div>
-                <div class="mb-3">
-                    <label for="weight_education" class="form-label">وزن تحصیلات (٪)</label>
-                    <input type="number" class="form-control" id="weight_education" name="weight_education" value="30" min="0" max="100">
+                    <label for="api_key" class="form-label">توکن API گپ‌جی‌پی‌تی <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="api_key" name="api_key" placeholder="توکن API خود را وارد کنید" required>
                 </div>
                 <div class="mb-3">
                     <label for="custom_prompt" class="form-label">پرامپت سفارشی (اختیاری)</label>
                     <textarea class="form-control" id="custom_prompt" name="custom_prompt" rows="4" placeholder="پرامپت سفارشی خود را وارد کنید..."></textarea>
                 </div>
                 <div class="mb-3">
-                    <label for="resumeInput" class="form-label">آپلود رزومه‌ها (PDF)</label>
+                    <label class="form-label">معیارهای امتیازدهی</label>
+                    <div id="criteriaContainer" class="mb-3">
+                        <div class="criterion mb-2 d-flex align-items-center">
+                            <input type="text" class="form-control me-2" name="criterion_name" value="experience" placeholder="نام معیار" readonly>
+                            <input type="number" class="form-control me-2" name="criterion_weight" value="0.4" min="0" max="1" step="0.01" placeholder="وزن (0-1)">
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeCriterion(this)"><i class="bi bi-trash"></i></button>
+                        </div>
+                        <div class="criterion mb-2 d-flex align-items-center">
+                            <input type="text" class="form-control me-2" name="criterion_name" value="skills" placeholder="نام معیار" readonly>
+                            <input type="number" class="form-control me-2" name="criterion_weight" value="0.3" min="0" max="1" step="0.01" placeholder="وزن (0-1)">
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeCriterion(this)"><i class="bi bi-trash"></i></button>
+                        </div>
+                        <div class="criterion mb-2 d-flex align-items-center">
+                            <input type="text" class="form-control me-2" name="criterion_name" value="education" placeholder="نام معیار" readonly>
+                            <input type="number" class="form-control me-2" name="criterion_weight" value="0.3" min="0" max="1" step="0.01" placeholder="وزن (0-1)">
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeCriterion(this)"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="addCriterion()"><i class="bi bi-plus-circle me-2"></i> افزودن معیار</button>
+                </div>
+                <div class="mb-3">
+                    <label for="resumeInput" class="form-label"><i class="bi bi-upload me-2"></i> آپلود رزومه‌ها (PDF)</label>
                     <input type="file" multiple accept=".pdf" id="resumeInput" name="resumes" class="form-control">
                 </div>
-                <button type="button" class="btn btn-primary" onclick="uploadResumes()">ارسال</button>
+                <button type="button" class="btn btn-primary" onclick="uploadResumes()"><i class="bi bi-send me-2"></i> ارسال</button>
             </form>
         </div>
         <div class="d-flex justify-content-between mb-3">
-            <button class="btn btn-outline-primary btn-sort" onclick="sortResults()">مرتب‌سازی بر اساس امتیاز</button>
+            <button class="btn btn-outline-primary btn-sort" onclick="sortResults()"><i class="bi bi-sort-down me-2"></i> مرتب‌سازی بر اساس امتیاز</button>
             <div>
-                <a id="downloadAllCsv" class="btn btn-outline-secondary me-2" style="display:none">دانلود همه (CSV)</a>
-                <a id="downloadAllPdf" class="btn btn-outline-secondary" style="display:none">دانلود همه (PDF)</a>
+                <a id="downloadAllCsv" class="btn btn-outline-secondary me-2" style="display:none"><i class="bi bi-filetype-csv me-2"></i> دانلود همه (CSV)</a>
+                <a id="downloadAllPdf" class="btn btn-outline-secondary" style="display:none"><i class="bi bi-filetype-pdf me-2"></i> دانلود همه (PDF)</a>
             </div>
         </div>
         <div id="results" class="mt-4"></div>
@@ -60,26 +74,65 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let chartData = [];
-        
-        // تم تیره/روشن
+
+        // مدیریت تم تیره/روشن
         const themeToggle = document.getElementById('themeToggle');
         themeToggle.addEventListener('click', () => {
             document.body.classList.toggle('dark-theme');
             localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
-            themeToggle.textContent = document.body.classList.contains('dark-theme') ? 'تم روشن' : 'تم تیره';
+            themeToggle.innerHTML = document.body.classList.contains('dark-theme') ? 
+                '<i class="bi bi-sun-fill me-2"></i> تم روشن' : 
+                '<i class="bi bi-moon-stars-fill me-2"></i> تم تیره';
         });
         if (localStorage.getItem('theme') === 'dark') {
             document.body.classList.add('dark-theme');
-            themeToggle.textContent = 'تم روشن';
+            themeToggle.innerHTML = '<i class="bi bi-sun-fill me-2"></i> تم روشن';
+        }
+
+        // افزودن معیار جدید
+        function addCriterion() {
+            const container = document.getElementById('criteriaContainer');
+            const criterionDiv = document.createElement('div');
+            criterionDiv.className = 'criterion mb-2 d-flex align-items-center';
+            criterionDiv.innerHTML = `
+                <input type="text" class="form-control me-2" name="criterion_name" placeholder="نام معیار" required>
+                <input type="number" class="form-control me-2" name="criterion_weight" value="0.1" min="0" max="1" step="0.01" placeholder="وزن (0-1)">
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeCriterion(this)"><i class="bi bi-trash"></i></button>
+            `;
+            container.appendChild(criterionDiv);
+        }
+
+        // حذف معیار
+        function removeCriterion(button) {
+            if (document.querySelectorAll('.criterion').length > 1) {
+                button.parentElement.remove();
+            } else {
+                alert('حداقل یک معیار باید باقی بماند!');
+            }
+        }
+
+        // جمع‌آوری معیارها
+        function getCriteria() {
+            const criteria = {};
+            document.querySelectorAll('.criterion').forEach(criterion => {
+                const name = criterion.querySelector('input[name="criterion_name"]').value;
+                const weight = parseFloat(criterion.querySelector('input[name="criterion_weight"]').value);
+                if (name && weight) {
+                    criteria[name] = weight;
+                }
+            });
+            return criteria;
         }
 
         function uploadResumes() {
             const files = document.getElementById('resumeInput').files;
-            if (files.length === 0) {
-                alert('لطفاً حداقل یک فایل انتخاب کنید');
+            const apiKey = document.getElementById('api_key').value;
+            if (files.length === 0 || !apiKey) {
+                alert('لطفاً حداقل یک فایل و توکن API وارد کنید');
                 return;
             }
             const formData = new FormData(document.getElementById('resumeForm'));
+            formData.append('criteria', JSON.stringify(getCriteria()));
             fetch('/upload', {
                 method: 'POST',
                 body: formData
@@ -99,7 +152,7 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('خطایی رخ داد');
+                alert('خطایی رخ داد: ' + error.message);
             });
         }
 
@@ -108,18 +161,18 @@
             resultsDiv.innerHTML = '';
             results.forEach(result => {
                 const resultDiv = document.createElement('div');
-                resultDiv.className = 'card';
+                resultDiv.className = 'card result-card';
                 resultDiv.innerHTML = `
                     <div class="card-body">
-                        <h5 class="card-title">${result.filename}</h5>
+                        <h5 class="card-title"><i class="bi bi-file-earmark-person me-2"></i> ${result.filename}</h5>
                         ${result.error ? `<p class="card-text text-danger">${result.error}</p>` : `
                             <p class="card-text"><strong>امتیاز:</strong> ${result.score}</p>
                             <p class="card-text"><strong>تحلیل:</strong> ${result.summary}</p>
                             <p class="card-text"><strong>تجربه:</strong> ${result.analysis.experience || 'نامشخص'} سال</p>
                             <p class="card-text"><strong>مهارت‌ها:</strong> ${result.analysis.skills?.join(', ') || 'نامشخص'}</p>
                             <p class="card-text"><strong>تحصیلات:</strong> ${result.analysis.education || 'نامشخص'}</p>
-                            <a href="/download/csv/${result.filename}?results=${encodeURIComponent(JSON.stringify(results))}" class="btn btn-primary btn-sm me-2">دانلود CSV</a>
-                            <a href="/download/pdf/${encodeURIComponent(result.filename)}?results=${encodeURIComponent(JSON.stringify(results))}" class="btn btn-primary btn-sm">دانلود PDF</a>
+                            <a href="/download/csv/${encodeURIComponent(result.filename)}?results=${encodeURIComponent(JSON.stringify(results))}" class="btn btn-primary btn-sm me-2"><i class="bi bi-filetype-csv me-2"></i> دانلود CSV</a>
+                            <a href="/download/pdf/${encodeURIComponent(result.filename)}?results=${encodeURIComponent(JSON.stringify(results))}" class="btn btn-primary btn-sm"><i class="bi bi-filetype-pdf me-2"></i> دانلود PDF</a>
                         `}
                     </div>
                 `;
@@ -144,22 +197,22 @@
                         {
                             label: 'امتیاز کل',
                             data: chartData.map(r => r.score || 0),
-                            backgroundColor: '#007bff',
-                            borderColor: '#0056b3',
+                            backgroundColor: '#0d6efd',
+                            borderColor: '#0a58ca',
                             borderWidth: 1
                         },
                         {
                             label: 'تجربه',
                             data: chartData.map(r => (r.analysis?.experience || 0) * 10),
-                            backgroundColor: '#28a745',
-                            borderColor: '#1e7e34',
+                            backgroundColor: '#198754',
+                            borderColor: '#146c43',
                             borderWidth: 1
                         },
                         {
                             label: 'مهارت‌ها',
                             data: chartData.map(r => (r.analysis?.skills?.length || 0) * 5),
                             backgroundColor: '#ffc107',
-                            borderColor: '#e0a800',
+                            borderColor: '#ffca2c',
                             borderWidth: 1
                         }
                     ]
@@ -170,6 +223,10 @@
                     },
                     plugins: {
                         legend: { position: 'top' }
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeOutQuart'
                     }
                 }
             });
